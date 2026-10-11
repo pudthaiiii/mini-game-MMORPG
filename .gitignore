@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.log
+# single-file build for double-click play (not tracked)
+play.html
