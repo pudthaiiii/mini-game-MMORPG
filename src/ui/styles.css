@@ -358,6 +358,14 @@ code {
   gap: 8px;
   align-items: flex-start;
 }
+.skill-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px;
+}
 .skill-name {
   font-weight: 700;
   font-size: 14px;
@@ -538,6 +546,14 @@ code {
 .slot-icon {
   font-size: 20px;
   line-height: 1.1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+}
+.slot-icon-img {
+  width: 22px;
+  height: 22px;
 }
 .slot-label {
   font-size: 12px;
@@ -782,6 +798,28 @@ code {
   font-size: 24px;
   animation: floatUpSlow 1.8s ease-out forwards;
 }
+.float-ice span,
+.float-fire span {
+  font-size: 27px;
+  letter-spacing: 0.3px;
+  animation: floatUpMagic 1.05s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+.float-ice span {
+  color: #e6faff;
+  -webkit-text-stroke: 1px #1c6a98;
+  text-shadow:
+    0 0 6px #7fd8ff,
+    0 0 14px #3fa6ff,
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.float-fire span {
+  color: #fff3dc;
+  -webkit-text-stroke: 1px #8a2a12;
+  text-shadow:
+    0 0 6px #ffae5c,
+    0 0 14px #ff6a2e,
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
 .emote {
   pointer-events: none;
   font-size: 22px;
@@ -804,6 +842,24 @@ code {
   }
   100% {
     transform: translateY(-46px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes floatUpMagic {
+  0% {
+    transform: translateY(6px) scale(0.3) rotate(-8deg);
+    opacity: 0;
+  }
+  18% {
+    transform: translateY(-10px) scale(1.3) rotate(4deg);
+    opacity: 1;
+  }
+  32% {
+    transform: translateY(-14px) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-54px) scale(0.95) rotate(0deg);
     opacity: 0;
   }
 }

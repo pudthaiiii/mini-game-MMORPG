@@ -32,6 +32,7 @@ export function jobExpToNext(jobLevel: number) {
 export function deriveStats(stats: Stats, baseLevel: number, job: JobDef, weaponAtk: number, armorDef: number): Derived {
   const { str, agi, vit, int, dex, luk } = stats;
   const atk = str + Math.floor(str / 10) ** 2 + Math.floor(dex / 5) + Math.floor(luk / 5) + weaponAtk;
+  const matk = int + Math.floor(int / 7) ** 2 + Math.floor(dex / 10) + Math.floor(luk / 10);
   const hit = baseLevel + dex;
   const flee = baseLevel + agi;
   const crit = round1(1 + luk * 0.3);
@@ -41,6 +42,7 @@ export function deriveStats(stats: Stats, baseLevel: number, job: JobDef, weapon
   const maxSp = Math.floor((10 + baseLevel * job.spFactor) * (1 + int / 100));
   return {
     atk,
+    matk,
     hit,
     flee,
     crit,
@@ -82,6 +84,13 @@ export function monsterAttack(m: MonsterDef, d: Derived, rng: Rng = Math.random)
   if (rng() * 100 >= hitChance(m.hit, d.flee)) return { kind: 'miss', damage: 0 };
   const base = m.atk[0] + rng() * (m.atk[1] - m.atk[0]);
   const raw = base * ((100 - d.def) / 100) - d.softDef;
+  return { kind: 'hit', damage: Math.max(1, Math.floor(raw)) };
+}
+
+/** AoE spell damage (Storm Gust / Meteor Storm): always lands, DEF still mitigates it. */
+export function magicAttack(matk: number, power: number, m: MonsterDef, rng: Rng = Math.random): AttackResult {
+  const variance = 0.85 + rng() * 0.3;
+  const raw = matk * power * variance * ((100 - m.def) / 100) - m.softDef * 0.5;
   return { kind: 'hit', damage: Math.max(1, Math.floor(raw)) };
 }
 

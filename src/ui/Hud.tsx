@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { SKILLS } from '../shared/data/skills';
 import { skillLevel } from '../shared/progression';
+import meteorStormIcon from './icons/meteor_storm.svg';
+import stormGustIcon from './icons/storm_gust.svg';
 import { useGame } from './useGame';
 
 export type WindowId = 'status' | 'skills' | 'quests' | 'help';
@@ -122,6 +124,28 @@ export function Hotbar({ emoteOpen, setEmoteOpen }: { emoteOpen: boolean; setEmo
       onClick: () => (bt >= 2 ? setEmoteOpen(!emoteOpen) : game.emote('!')),
       active: emoteOpen,
     },
+    {
+      key: '5',
+      label: SKILLS.storm_gust.nameTh,
+      icon: stormGustIcon,
+      iconImg: true,
+      sub: `${SKILLS.storm_gust.spCost} SP`,
+      ok: skillLevel(s, 'storm_gust') > 0,
+      lockText: 'เรียนที่หน้าต่างสกิล',
+      onClick: () => game.castSkill('storm_gust'),
+      active: game.pendingCastId === 'storm_gust',
+    },
+    {
+      key: '6',
+      label: SKILLS.meteor_storm.nameTh,
+      icon: meteorStormIcon,
+      iconImg: true,
+      sub: `${SKILLS.meteor_storm.spCost} SP`,
+      ok: skillLevel(s, 'meteor_storm') > 0,
+      lockText: 'เรียนที่หน้าต่างสกิล',
+      onClick: () => game.castSkill('meteor_storm'),
+      active: game.pendingCastId === 'meteor_storm',
+    },
   ];
   return (
     <div className="hotbar">
@@ -148,7 +172,9 @@ export function Hotbar({ emoteOpen, setEmoteOpen }: { emoteOpen: boolean; setEmo
           title={sl.ok ? sl.label : `ล็อก — ${sl.lockText}`}
         >
           <kbd>{sl.key}</kbd>
-          <span className="slot-icon">{sl.icon}</span>
+          <span className="slot-icon">
+            {'iconImg' in sl && sl.iconImg ? <img src={sl.icon} alt="" className="slot-icon-img" /> : sl.icon}
+          </span>
           <span className="slot-label">{sl.label}</span>
           <span className="slot-sub">{sl.ok ? sl.sub : sl.lockText}</span>
         </button>

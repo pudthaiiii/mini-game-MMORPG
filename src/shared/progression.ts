@@ -41,7 +41,7 @@ export function newCharacter(name: string, stats: Stats, spawn: [number, number]
     stats: { ...stats },
     statPoints: 0,
     skillPoints: 0,
-    skills: { basic_training: 0 },
+    skills: { basic_training: 0, storm_gust: 1, meteor_storm: 1 },
     hp: 1,
     sp: 1,
     weapon: 'training_knife',

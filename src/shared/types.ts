@@ -52,6 +52,10 @@ export interface SkillDef {
   spCost: number;
   description: string;
   unlocks?: SkillLevelUnlock[];
+  /** seconds before the skill can be cast again; active combat skills only */
+  cooldown?: number;
+  /** seconds of channel before the effect lands; active combat skills only */
+  castTime?: number;
 }
 
 export interface MonsterDef {
@@ -131,6 +135,7 @@ export interface CharacterState {
 
 export interface Derived {
   atk: number;
+  matk: number;
   hit: number;
   flee: number;
   crit: number;

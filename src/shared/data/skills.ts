@@ -36,6 +36,26 @@ export const SKILLS: Record<string, SkillDef> = {
     spCost: 5,
     description: 'นอนนิ่ง มอนสเตอร์เลิกไล่ตาม แต่เดินและโจมตีไม่ได้ กดซ้ำเพื่อลุก',
   },
+  storm_gust: {
+    id: 'storm_gust',
+    nameTh: 'Storm Gust',
+    maxLevel: 5,
+    source: 'points',
+    spCost: 9,
+    cooldown: 6,
+    castTime: 0.8,
+    description: 'พายุน้ำแข็งเป็นวงกว้างรอบเป้าหมาย ตีหลายจังหวะ แช่แข็งมอนที่โดนชั่วครู่',
+  },
+  meteor_storm: {
+    id: 'meteor_storm',
+    nameTh: 'Meteor Storm',
+    maxLevel: 5,
+    source: 'points',
+    spCost: 12,
+    cooldown: 10,
+    castTime: 1.2,
+    description: 'เรียกอุกกาบาตตกใส่พื้นที่เป้าหมายหลายลูกติดกัน ดาเมจเวทย์ธาตุไฟ',
+  },
 };
 
 export const FIRST_AID_HEAL = 5;

@@ -44,8 +44,15 @@ export function App() {
         case 'Digit4':
           setEmoteOpen((v) => !v);
           break;
+        case 'Digit5':
+          game.castSkill('storm_gust');
+          break;
+        case 'Digit6':
+          game.castSkill('meteor_storm');
+          break;
         case 'Escape':
-          if (game.dialog) game.closeDialog();
+          if (game.pendingCastId) game.cancelCast();
+          else if (game.dialog) game.closeDialog();
           else if (emoteOpen) setEmoteOpen(false);
           else setOpen(CLOSED);
           break;

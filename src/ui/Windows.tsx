@@ -5,7 +5,11 @@ import { SKILLS } from '../shared/data/skills';
 import { statCost } from '../shared/formulas';
 import { canRaiseSkill, canRaiseStat, questReady, skillLevel } from '../shared/progression';
 import { STAT_HINT, STAT_KEYS, STAT_LABEL } from '../shared/types';
+import meteorStormIcon from './icons/meteor_storm.svg';
+import stormGustIcon from './icons/storm_gust.svg';
 import { useGame } from './useGame';
+
+const AOE_ICONS: Record<string, string> = { storm_gust: stormGustIcon, meteor_storm: meteorStormIcon };
 
 function Win({ title, onClose, className, children }: { title: string; onClose: () => void; className?: string; children: ReactNode }) {
   return (
@@ -45,6 +49,7 @@ export function StatusWindow({ onClose }: { onClose: () => void }) {
         </div>
         <div className="derived">
           <Row label="ATK" value={d.atk} />
+          <Row label="MATK" value={d.matk} />
           <Row label="HIT" value={d.hit} />
           <Row label="FLEE" value={d.flee} />
           <Row label="CRIT" value={`${d.crit}%`} />
@@ -93,6 +98,29 @@ export function SkillWindow({ onClose }: { onClose: () => void }) {
           ))}
         </ol>
       </div>
+      {(['storm_gust', 'meteor_storm'] as const).map((id) => {
+        const def = SKILLS[id];
+        const lv2 = skillLevel(s, id);
+        return (
+          <div className="skill-card small" key={id}>
+            <div className="skill-head">
+              <img src={AOE_ICONS[id]} alt="" className="skill-icon" />
+              <div>
+                <div className="skill-name">
+                  {def.nameTh} <span className="muted">· {def.spCost} SP · cd {def.cooldown}s</span>
+                </div>
+                <div className="muted">{def.description}</div>
+              </div>
+              <div className="skill-lv">
+                Lv <b>{lv2}</b>/{def.maxLevel}
+                <button className="mini" disabled={!canRaiseSkill(s, id)} onClick={() => game.raiseSkill(id)}>
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
       {(['first_aid', 'play_dead'] as const).map((id) => {
         const def = SKILLS[id];
         const learned = skillLevel(s, id) > 0;
@@ -175,6 +203,9 @@ export function HelpWindow({ onClose }: { onClose: () => void }) {
         </li>
         <li>
           <kbd>1</kbd> ปฐมพยาบาล · <kbd>2</kbd> แกล้งตาย · <kbd>3</kbd> นั่งพัก · <kbd>4</kbd> อีโมต
+        </li>
+        <li>
+          <kbd>5</kbd> Storm Gust · <kbd>6</kbd> Meteor Storm — ต้องลงแต้มสกิลก่อนที่หน้าต่างสกิล (กด S)
         </li>
         <li>
           เติม <code>?rate=10</code> หรือ <code>#x10</code> ท้ายลิงก์ แล้วรีโหลด เพื่อทดสอบด้วย EXP x10

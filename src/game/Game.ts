@@ -10,6 +10,7 @@ import {
   HP_REGEN_INTERVAL,
   hpRegenAmount,
   jobExpToNext,
+  magicAttack,
   monsterAttack,
   playerAttack,
   SP_REGEN_INTERVAL,
@@ -31,8 +32,9 @@ import {
 } from '../shared/progression';
 import type { CharacterState, Derived, ProgressEvent, StatKey, Stats } from '../shared/types';
 import { Monster, Npc, Player, type PlayerTarget } from './entities';
-import { Fx, Label } from './fx';
+import { Fx, Label, type Element } from './fx';
 import { makeSaveCrystal } from './models';
+import { makeSky } from './sky';
 import { buildWorld } from './world';
 
 export type LogKind = 'sys' | 'exp' | 'level' | 'quest' | 'warn' | 'skill' | 'combat';
@@ -49,6 +51,32 @@ export interface Dialog {
   speaker: string;
   lines: string[];
   options: DialogOption[];
+}
+
+export type AoeSkillId = 'storm_gust' | 'meteor_storm';
+
+interface Meteor {
+  x: number;
+  z: number;
+  fallStart: number;
+  impact: number;
+  fallen: boolean;
+  hit: boolean;
+}
+
+interface ActiveCast {
+  id: AoeSkillId;
+  x: number;
+  z: number;
+  t: number;
+  radius: number;
+  power: number;
+  // storm gust: periodic AoE ticks
+  nextTick: number;
+  ticksLeft: number;
+  tickInterval: number;
+  // meteor storm: staggered impacts
+  meteors: Meteor[];
 }
 
 const SAVE_KEY = 'game-web/phase0/character';
@@ -89,6 +117,10 @@ export class Game {
   private holdTimer = 0;
   private swingTarget: Monster | null = null;
   private hovered: Monster | null = null;
+  private gameTime = 0;
+  private skillCooldowns: Partial<Record<AoeSkillId, number>> = {};
+  private casts: ActiveCast[] = [];
+  pendingCastId: AoeSkillId | null = null;
 
   // camera
   private yaw = 0;
@@ -114,7 +146,10 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     viewport.appendChild(this.renderer.domElement);
 
     this.labels = new CSS2DRenderer();
@@ -122,10 +157,12 @@ export class Game {
     viewport.appendChild(this.labels.domElement);
 
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 220);
-    this.scene.background = new THREE.Color('#bfe3f2');
-    this.scene.fog = new THREE.Fog('#bfe3f2', 48, 100);
+    const skyTop = '#5fa8e0';
+    const skyHorizon = '#d8ecf2';
+    this.scene.add(makeSky(skyTop, skyHorizon));
+    this.scene.fog = new THREE.Fog(skyHorizon, 50, 105);
 
-    const hemi = new THREE.HemisphereLight('#e4f4ff', '#5d7a3a', 1.25);
+    const hemi = new THREE.HemisphereLight(skyTop, '#5d7a3a', 1.2);
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight('#fff3dc', 2.1);
     this.sun.castShadow = true;
@@ -301,6 +338,9 @@ export class Game {
       if (!raw) return;
       const data = JSON.parse(raw) as CharacterState;
       if (data?.version !== 1 || !data.stats) return;
+      // backfill skills added after this save was created, so existing characters get them too
+      if (!data.skills.storm_gust) data.skills.storm_gust = 1;
+      if (!data.skills.meteor_storm) data.skills.meteor_storm = 1;
       this.state = data;
       this.spawnPlayer();
       this.addLog(`โหลดตัวละคร ${data.name} แล้ว`, 'sys');
@@ -382,6 +422,210 @@ export class Game {
       this.addLog('แกล้งตาย... มอนสเตอร์เลิกสนใจคุณ (กด 2 อีกครั้งเพื่อลุก)', 'skill');
     }
     this.touch();
+  }
+
+  // ── AoE combat skills (Storm Gust / Meteor Storm) ──────────────────────
+  cooldownLeft(id: AoeSkillId) {
+    return Math.max(0, (this.skillCooldowns[id] ?? 0) - this.gameTime);
+  }
+
+  /** footprint radius shown by the ground reticle / used to spread the effect */
+  private skillRadius(id: AoeSkillId, lv: number) {
+    return id === 'storm_gust' ? 3.6 + lv * 0.25 : 5 + lv * 0.3;
+  }
+
+  private skillRange(lv: number) {
+    return 11 + lv * 0.4;
+  }
+
+  private skillColor(id: AoeSkillId) {
+    return id === 'storm_gust' ? '#8fd6ff' : '#ff8a5c';
+  }
+
+  private skillElement(id: AoeSkillId): Element {
+    return id === 'storm_gust' ? 'ice' : 'fire';
+  }
+
+  /** Step 1: validate + arm ground targeting. The player clicks to actually cast (see confirmCast). */
+  castSkill(id: AoeSkillId) {
+    if (this.pendingCastId === id) return this.cancelCast();
+    const s = this.state;
+    const p = this.player;
+    if (!s || !p || p.dead || p.playingDead) return;
+    const lv = skillLevel(s, id);
+    const def = SKILLS[id];
+    if (lv < 1) return this.addLog(`ยังไม่ได้เรียน ${def.nameTh} — ใช้แต้มสกิลที่หน้าต่างสกิล (กด S)`, 'warn');
+    const cd = this.cooldownLeft(id);
+    if (cd > 0) return this.addLog(`${def.nameTh} ยังไม่พร้อมใช้ (เหลือ ${cd.toFixed(1)}s)`, 'warn');
+    if (s.sp < def.spCost) return this.addLog('SP ไม่พอ', 'warn');
+    this.pendingCastId = id;
+    this.addLog(`เล็ง ${def.nameTh} — คลิกตำแหน่งที่จะวาง (Esc ยกเลิก)`, 'skill');
+    this.touch();
+  }
+
+  cancelCast() {
+    if (!this.pendingCastId) return;
+    this.pendingCastId = null;
+    this.fx.setCastIndicator(false);
+    this.touch();
+  }
+
+  /** Step 2: called from onLeftClick with the picked ground point once the player confirms placement. */
+  private confirmCast(x: number, z: number) {
+    const id = this.pendingCastId;
+    const s = this.state;
+    const p = this.player;
+    if (!id || !s || !p) {
+      this.pendingCastId = null;
+      this.fx.setCastIndicator(false);
+      return;
+    }
+    const lv = skillLevel(s, id);
+    const def = SKILLS[id];
+    // re-validate: time may have passed while aiming
+    if (lv < 1 || this.cooldownLeft(id) > 0 || s.sp < def.spCost) {
+      this.pendingCastId = null;
+      this.fx.setCastIndicator(false);
+      this.addLog(`ยกเลิก ${def.nameTh}`, 'warn');
+      return;
+    }
+    const dist = Math.hypot(x - p.pos.x, z - p.pos.z);
+    const range = this.skillRange(lv);
+    if (dist > range) {
+      this.addLog(`${def.nameTh} อยู่นอกระยะ — คลิกใกล้ขึ้น`, 'warn');
+      return; // stay in targeting mode so the player can click closer
+    }
+    this.pendingCastId = null;
+    this.fx.setCastIndicator(false);
+
+    s.sp -= def.spCost;
+    this.skillCooldowns[id] = this.gameTime + (def.cooldown ?? 6);
+    p.dest = null;
+    p.face(x, z, 0.001);
+    const castTime = def.castTime ?? 0.8;
+    this.addLog(`ร่าย ${def.nameTh}...`, 'skill');
+    this.fx.castGlyph(x, z, castTime, this.skillElement(id));
+
+    if (id === 'storm_gust') {
+      this.casts.push({
+        id,
+        x,
+        z,
+        t: 0,
+        radius: this.skillRadius(id, lv),
+        power: 0.5 + lv * 0.09,
+        nextTick: castTime,
+        ticksLeft: 3 + Math.ceil(lv / 2),
+        tickInterval: 0.45,
+        meteors: [],
+      });
+    } else {
+      const radius = this.skillRadius(id, lv);
+      const count = 4 + lv;
+      const meteors: Meteor[] = [];
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.sqrt(Math.random()) * radius;
+        const impact = castTime + 0.3 + i * (1.7 / count) + Math.random() * 0.15;
+        meteors.push({ x: x + Math.cos(a) * d, z: z + Math.sin(a) * d, fallStart: impact - 0.5, impact, fallen: false, hit: false });
+      }
+      this.casts.push({
+        id,
+        x,
+        z,
+        t: 0,
+        radius: 1.9 + lv * 0.12,
+        power: 0.85 + lv * 0.11,
+        nextTick: 0,
+        ticksLeft: 0,
+        tickInterval: 0,
+        meteors,
+      });
+    }
+    this.touch();
+  }
+
+  private updateCastTargeting() {
+    if (!this.pendingCastId || !this.state || !this.player) {
+      return;
+    }
+    const lv = skillLevel(this.state, this.pendingCastId);
+    const hit = this.pointer.inside ? this.pick() : null;
+    let x = 0;
+    let z = 0;
+    let have = false;
+    if (hit) {
+      if (hit.kind === 'ground') {
+        x = hit.x;
+        z = hit.z;
+        have = true;
+      } else if (hit.kind === 'monster') {
+        x = hit.monster.pos.x;
+        z = hit.monster.pos.z;
+        have = true;
+      }
+    }
+    if (!have) {
+      this.fx.setCastIndicator(false);
+      return;
+    }
+    const dist = Math.hypot(x - this.player.pos.x, z - this.player.pos.z);
+    const inRange = dist <= this.skillRange(lv);
+    this.fx.setCastIndicator(true, x, z, this.skillRadius(this.pendingCastId, lv), this.skillColor(this.pendingCastId), inRange);
+  }
+
+  private updateCasts(dt: number) {
+    if (!this.casts.length) return;
+    for (let i = this.casts.length - 1; i >= 0; i--) {
+      const c = this.casts[i];
+      c.t += dt;
+      if (c.id === 'storm_gust') {
+        while (c.ticksLeft > 0 && c.t >= c.nextTick) {
+          this.fx.burst(c.x, c.z, c.radius, 'ice', 8);
+          this.applyAoeDamage(c.x, c.z, c.radius, c.power, 0.5, 'ice');
+          c.ticksLeft--;
+          c.nextTick += c.tickInterval;
+        }
+        if (c.ticksLeft <= 0) this.casts.splice(i, 1);
+      } else {
+        let pending = 0;
+        for (const m of c.meteors) {
+          if (!m.fallen && c.t >= m.fallStart) {
+            m.fallen = true;
+            this.fx.meteorFall(m.x, m.z, Math.max(0.15, m.impact - m.fallStart));
+          }
+          if (!m.hit && c.t >= m.impact) {
+            m.hit = true;
+            this.fx.burst(m.x, m.z, c.radius, 'fire', 7);
+            this.applyAoeDamage(m.x, m.z, c.radius, c.power, 0, 'fire');
+          }
+          if (!m.hit) pending++;
+        }
+        if (pending === 0) this.casts.splice(i, 1);
+      }
+    }
+  }
+
+  private applyAoeDamage(x: number, z: number, radius: number, power: number, freeze: number, kind: 'ice' | 'fire') {
+    if (!this.derived) return;
+    const matk = this.derived.matk;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      const d = Math.hypot(m.pos.x - x, m.pos.z - z);
+      if (d > radius + m.def.radius) continue;
+      const res = magicAttack(matk, power, m.def);
+      m.hp -= res.damage;
+      m.hitFlash = 0.15;
+      const at = this.headOf(m.pos, (m.def.flying ? 1.9 : m.rig.height) * m.def.scale + 0.3);
+      this.fx.float(at, `${res.damage}`, kind);
+      if (freeze > 0) m.frozenTimer = Math.max(m.frozenTimer, freeze);
+      if (!m.aggro && m.state !== 'dying' && m.state !== 'dead') {
+        m.aggro = true;
+        m.state = 'chase';
+        m.attackCooldown = Math.max(m.attackCooldown, 0.5);
+      }
+      if (m.hp <= 0) this.killMonster(m);
+    }
   }
 
   toggleSit() {
@@ -561,6 +805,12 @@ export class Game {
   private onLeftClick() {
     const p = this.player;
     if (!p || p.dead || !this.state) return;
+    if (this.pendingCastId) {
+      const hit = this.pick();
+      if (hit?.kind === 'ground') this.confirmCast(hit.x, hit.z);
+      else if (hit?.kind === 'monster') this.confirmCast(hit.monster.pos.x, hit.monster.pos.z);
+      return;
+    }
     if (p.playingDead) {
       this.addLog('กำลังแกล้งตายอยู่ กด 2 เพื่อลุก', 'warn');
       return;
@@ -608,8 +858,11 @@ export class Game {
 
   // ── simulation ──────────────────────────────────────────────────────
   private update(dt: number) {
+    this.gameTime += dt;
     this.fx.update(dt);
     if (this.player && this.state && this.derived) this.updatePlayer(dt);
+    this.updateCastTargeting();
+    this.updateCasts(dt);
     for (const m of this.monsters) this.updateMonster(m, dt);
     for (const n of this.npcs) n.animate(dt);
     this.crystal.crystal.rotation.y += dt * 0.8;
@@ -837,6 +1090,13 @@ export class Game {
         m.respawnTimer = m.def.respawnSec;
         m.updateLabel();
       }
+      return;
+    }
+    if (m.frozenTimer > 0) {
+      m.frozenTimer = Math.max(0, m.frozenTimer - dt);
+      m.setMoving(false);
+      m.animate(dt);
+      m.updateLabel();
       return;
     }
 

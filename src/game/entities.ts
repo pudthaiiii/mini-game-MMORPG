@@ -168,6 +168,7 @@ export class Monster {
   respawnTimer = 0;
   wanderTo = new THREE.Vector3();
   hitFlash = 0;
+  frozenTimer = 0;
   hovered = false;
   targeted = false;
   private t = Math.random() * 10;

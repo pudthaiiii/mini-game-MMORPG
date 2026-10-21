@@ -43,6 +43,8 @@ export interface HumanLook {
   shoes: string;
   hat?: 'none' | 'nurse' | 'wide' | 'pointed';
   hatColor?: string;
+  /** cone color for a 'pointed' hat, if different from the brim */
+  hatColor2?: string;
   cape?: string;
   robe?: boolean;
   weapon?: 'knife' | 'staff' | 'none';
@@ -125,10 +127,13 @@ export function makeHuman(look: HumanLook): HumanRig {
     const brim = mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.05, 12), look.hatColor ?? '#2f4a8a');
     brim.position.y = 0.3;
     head.add(brim);
-    const cone = mesh(new THREE.ConeGeometry(0.36, 0.75, 10), look.hatColor ?? '#2f4a8a');
+    const cone = mesh(new THREE.ConeGeometry(0.36, 0.75, 10), look.hatColor2 ?? look.hatColor ?? '#2f4a8a');
     cone.position.set(0, 0.68, -0.05);
     cone.rotation.x = -0.25;
     head.add(cone);
+    const tip = mesh(new THREE.IcosahedronGeometry(0.08, 0), look.hatColor ?? '#2f4a8a');
+    tip.position.set(0, 1.0, -0.2);
+    head.add(tip);
   }
 
   // arms (pivot at shoulder)
@@ -196,13 +201,17 @@ export function makeHuman(look: HumanLook): HumanRig {
 }
 
 export const NOVICE_LOOK: HumanLook = {
-  skin: '#f6d7b8',
-  hair: '#5a3a24',
-  shirt: '#e8d9b5',
-  pants: '#7a5a3a',
-  shoes: '#4a3422',
-  hat: 'none',
-  weapon: 'knife',
+  skin: '#ffe3cf',
+  hair: '#f6dd9e',
+  shirt: '#fbf4e8',
+  pants: '#bcdcf2',
+  shoes: '#8fb9dd',
+  hat: 'pointed',
+  hatColor: '#fbf4e8',
+  hatColor2: '#6fa8d8',
+  cape: '#cfe6f7',
+  robe: true,
+  weapon: 'staff',
 };
 
 export const NPC_LOOKS: Record<'nurse' | 'hunter' | 'guide', HumanLook> = {
